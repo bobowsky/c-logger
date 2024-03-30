@@ -12,6 +12,25 @@
  #include <unistd.h>
 #endif /* defined(_WIN32) || defined(_WIN64) */
 
+// Define the ANSI color codes
+#define ANSI_COLOR_RESET     "\x1b[0m"
+#define ANSI_COLOR_RED       "\x1b[31m"
+#define ANSI_COLOR_GREEN     "\x1b[32m"
+#define ANSI_COLOR_YELLOW    "\x1b[33m"
+#define ANSI_COLOR_BLUE      "\x1b[34m"
+#define ANSI_COLOR_MAGENTA   "\x1b[35m"
+#define ANSI_COLOR_CYAN      "\x1b[36m"
+#define ANSI_COLOR_WHITE     "\x1b[37m"
+
+static const char* color_lookup[] = {
+    ANSI_COLOR_WHITE, // LogLevel_TRACE
+	ANSI_COLOR_WHITE, // LogLevel_DEBUG
+	ANSI_COLOR_WHITE, // LogLevel_INFO
+    ANSI_COLOR_YELLOW, // LogLevel_WARN
+    ANSI_COLOR_RED,   // LogLevel_ERROR
+    ANSI_COLOR_RED    // LogLevel_FATAL
+};
+
 enum {
     /* Logger type */
     kConsoleLogger = 1 << 0,
@@ -134,6 +153,13 @@ int logger_initConsoleLogger(FILE* output)
     return 1;
 }
 
+// Function to get the ANSI color code for a given log level
+static const char* getColorCode(LogLevel level) {
+	if(level < sizeof(color_lookup) / sizeof(color_lookup[0]))
+		return color_lookup[level];
+	return color_lookup[0];
+}
+
 static long getFileSize(const char* filename)
 {
     FILE* fp;
@@ -235,6 +261,19 @@ static char getLevelChar(LogLevel level)
     }
 }
 
+LogLevel getLevelFromChar(char levelChar) {
+    switch (levelChar) {
+        case 'T': return LogLevel_TRACE;
+        case 'D': return LogLevel_DEBUG;
+        case 'I': return LogLevel_INFO;
+        case 'W': return LogLevel_WARN;
+        case 'E': return LogLevel_ERROR;
+        case 'F': return LogLevel_FATAL;
+        default: return 0; // Invalid level character
+    }
+}
+
+
 static void getTimestamp(const struct timeval* time, char* timestamp, size_t size)
 {
     time_t sec = time->tv_sec; /* a necessary variable to avoid a runtime error on Windows */
@@ -243,7 +282,7 @@ static void getTimestamp(const struct timeval* time, char* timestamp, size_t siz
     assert(size >= 25);
 
     localtime_r(&sec, &calendar);
-    strftime(timestamp, size, "%y-%m-%d %H:%M:%S", &calendar);
+    strftime(timestamp, size, "%d %b %y %H:%M:%S", &calendar);
     sprintf(&timestamp[17], ".%06ld", (long) time->tv_usec);
 }
 
@@ -306,6 +345,7 @@ static int rotateLogFiles(void)
     return 1;
 }
 
+
 static long vflog(FILE* fp, char levelc, const char* timestamp, long threadID,
         const char* file, int line, const char* fmt, va_list arg,
         unsigned long long currentTime, unsigned long long* flushedTime)
@@ -313,7 +353,7 @@ static long vflog(FILE* fp, char levelc, const char* timestamp, long threadID,
     int size;
     long totalsize = 0;
 
-    if ((size = fprintf(fp, "%c %s %ld %s:%d: ", levelc, timestamp, threadID, file, line)) > 0) {
+    if ((size = fprintf(fp, "%s[%c] [%s] ~%ld~ (%s:%d):%s ",getColorCode(getLevelFromChar(levelc)), levelc, timestamp, threadID, file, line, ANSI_COLOR_RESET)) > 0) {
         totalsize += size;
     }
     if ((size = vfprintf(fp, fmt, arg)) > 0) {
